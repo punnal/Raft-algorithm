@@ -116,101 +116,172 @@ class Node:
             print(e)
             #self.remove_peer(ip, port)
 
-    def create_dict(self, clients):
-        dict_id = str(self.counter) +"." + str(self.pid)
-        self.counter += 1
-        log_entry = {
-            "type" : "create",
-            "dict_id": dict_id,
-            "members": clients,
-            "public_key": "",
-            "private_keys":[],
-            "term": self.current_term,
-            "index": len(self.log)
-        }
-        print(self.log)
-        print("appending")
-        prevhash = None
-        if len(self.log) > 0:
-            prevhash =  hashlib.sha256(str(self.log[-1]).encode('utf-8')).hexdigest()
-        log_entry["prev_hash"] = prevhash
-        self.log.append(log_entry)
-        print(self.log)
-        self.write_state()
-        
-        while(self.in_flight):
-            time.sleep(1)
+    def create_dict(self, clients, src):
+        if self.id == self.leader_id:
+            dict_id = str(self.counter) +"." + str(self.pid)
+            self.counter += 1
+            log_entry = {
+                "type" : "create",
+                "src" : src,
+                "dict_id": dict_id,
+                "members": clients,
+                "public_key": "",
+                "private_keys":[],
+                "term": self.current_term,
+                "index": len(self.log)
+            }
+            print(self.log)
+            print("appending")
+            prevhash = None
+            if len(self.log) > 0:
+                prevhash =  str(hashlib.sha256(str(self.log[-1]).encode('utf-8')).hexdigest())
+            log_entry["prev_hash"] = prevhash
+            self.log.append(log_entry)
+            print(self.log)
+            self.write_state()
+            
+            while(self.in_flight):
+                time.sleep(1)
 
-        self.in_flight = True
+            self.in_flight = True
 
-        while(self.in_flight):
+            while(self.in_flight):
+                for peer in self.peers:
+                    if peer[0] != self.id and peer[0] not in self.confirmation_from:
+                        self.send_append_entry(peer, log_entry)
+                timeout1 = self.heartbeat_timeout*10
+                while(self.in_flight and timeout1):
+                    timeout1 -= 1
+                    time.sleep(1)
+        else:
+            name = self.leader_id
+            ip = None
+            port = None
             for peer in self.peers:
-                if peer[0] != self.id and peer[0] not in self.confirmation_from:
-                    self.send_append_entry(peer, log_entry)
-            time.sleep(self.heartbeat_timeout*10)
-    def put_dict(self, id, key, value):
-        dict_id = id
-        self.counter += 1
-        log_entry = {
-            "type" : "put",
-            "client_id": self.id,
-            "dict_id": dict_id,
-            "key": key,
-            "value": value,
-            "term": self.current_term,
-            "index": len(self.log)
-        }
-        print(self.log)
-        print("appending")
-        prevhash = None
-        if len(self.log) > 0:
-            prevhash =  hashlib.sha256(str(self.log[-1]).encode('utf-8')).hexdigest()
-        log_entry["prev_hash"] = prevhash
-        self.log.append(log_entry)
-        print(self.log)
-        self.write_state()
-        
-        while(self.in_flight):
-            time.sleep(1)
+                if peer[0] == name:
+                    ip = peer[1]
+                    port = peer[2]
+                    break
+            if ip and port:
+                self.send(name,ip, port, {
+                    'from': self.id,
+                    'fromip': self.ip,
+                    'fromport': self.port,
+                    "type": "c", 
+                    "clients": clients
+                    })
+            
+    def put_dict(self, id, key, value, src):
+        if self.id == self.leader_id:
+            dict_id = id
+            self.counter += 1
+            log_entry = {
+                "type" : "put",
+                "src" : src,
+                "client_id": self.id,
+                "dict_id": dict_id,
+                "key": key,
+                "value": value,
+                "term": self.current_term,
+                "index": len(self.log)
+            }
+            print(self.log)
+            print("appending")
+            prevhash = None
+            if len(self.log) > 0:
+                prevhash =  str(hashlib.sha256(str(self.log[-1]).encode('utf-8')).hexdigest())
+            log_entry["prev_hash"] = prevhash
+            self.log.append(log_entry)
+            print(self.log)
+            self.write_state()
+            
+            while(self.in_flight):
+                time.sleep(1)
 
-        self.in_flight = True
+            self.in_flight = True
 
-        while(self.in_flight):
+            while(self.in_flight):
+                for peer in self.peers:
+                    if peer[0] != self.id and peer[0] not in self.confirmation_from:
+                        self.send_append_entry(peer, log_entry)
+                #time.sleep(self.heartbeat_timeout)
+                timeout1 = self.heartbeat_timeout*10
+                while(self.in_flight and timeout1):
+                    timeout1 -= 1
+                    time.sleep(1)
+        else:
+            name = self.leader_id
+            ip = None
+            port = None
             for peer in self.peers:
-                if peer[0] != self.id and peer[0] not in self.confirmation_from:
-                    self.send_append_entry(peer, log_entry)
-            time.sleep(self.heartbeat_timeout)
-    def get_dict(self, id, key):
-        dict_id = id
-        self.counter += 1
-        log_entry = {
-            "type" : "get",
-            "client_id": self.id,
-            "dict_id": dict_id,
-            "key": key,
-            "term": self.current_term,
-            "index": len(self.log)
-        }
-        print(self.log)
-        print("appending")
-        prevhash = None
-        if len(self.log) > 0:
-            prevhash =  hashlib.sha256(str(self.log[-1]).encode('utf-8')).hexdigest()
-        log_entry["prev_hash"] = prevhash
-        self.log.append(log_entry)
-        print(self.log)
-        self.write_state()
-        
-        while(self.in_flight):
-            time.sleep(1)
+                if peer[0] == name:
+                    ip = peer[1]
+                    port = peer[2]
+                    break
+            if ip and port:
+                self.send(name,ip, port, {
+                    'from': self.id,
+                    'fromip': self.ip,
+                    'fromport': self.port,
+                    "type": "p", 
+                    "id": id, 
+                    "key": key, 
+                    "value": value})
+    def get_dict(self, id, key, src):
+        if self.id == self.leader_id:
+            dict_id = id
+            self.counter += 1
+            log_entry = {
+                "type" : "get",
+                "src" : src,
+                "client_id": self.id,
+                "dict_id": dict_id,
+                "key": key,
+                "term": self.current_term,
+                "index": len(self.log)
+            }
+            print(self.log)
+            print("appending")
+            prevhash = None
+            if len(self.log) > 0:
+                prevhash =  str(hashlib.sha256(str(self.log[-1]).encode('utf-8')).hexdigest())
+            log_entry["prev_hash"] = prevhash
+            self.log.append(log_entry)
+            print(self.log)
+            self.write_state()
+            
+            while(self.in_flight):
+                time.sleep(1)
 
-        self.in_flight = True
+            self.in_flight = True
 
-        while(self.in_flight):
+            while(self.in_flight):
+                for peer in self.peers:
+                    if peer[0] != self.id and peer[0] not in self.confirmation_from:
+                        self.send_append_entry(peer, log_entry)
+                #time.sleep(self.heartbeat_timeout*2)
+                timeout1 = self.heartbeat_timeout*10
+                while(self.in_flight and timeout1):
+                    timeout1 -= 1
+                    time.sleep(1)
+        else:
+            name = self.leader_id
+            ip = None
+            port = None
             for peer in self.peers:
-                if peer[0] != self.id and peer[0] not in self.confirmation_from:
-                    self.send_append_entry(peer, log_entry)
-            time.sleep(self.heartbeat_timeout*2)
+                if peer[0] == name:
+                    ip = peer[1]
+                    port = peer[2]
+                    break
+            if ip and port:
+                self.send(name,ip, port, {
+                    'from': self.id,
+                    'fromip': self.ip,
+                    'fromport': self.port,
+                    "type": "g", 
+                    "id": id, 
+                    "key": key
+                })
 
     def send_append_entry(self, peer, log_entry):
         name = peer[0]
@@ -292,6 +363,37 @@ class Node:
         #response_message = json.loads(response.decode())
         #return response_message['vote_granted']
     
+    def handle_heartbeat_decision(self, message):
+        vote = message['entry_appended']
+        if vote and self.state =='leader' and self.in_flight:
+            pass
+        elif not vote:
+            print("Here!!!")
+            log_length = message["length_entries"]
+            prev_index = len(self.log)-1-(log_length+1)
+            print("prev index: ", prev_index)
+            prev_term = None
+            if prev_index >= 0:
+                prev_term = self.log[prev_index]["term"]
+            if prev_index == -1:
+                log_entries = self.log
+            else:
+                log_entries = self.log[prev_index+1:] #seeee
+            request_append_entry = {
+            'from': self.id,
+            'fromip': self.ip,
+            'fromport': self.port,
+            'type': 'heartbeat',
+            'leader_id': self.id,
+            'term': self.current_term,
+            'log_entry': log_entries,
+            'prev_index': prev_index,
+            'prev_term': prev_term,
+            'commit_index': self.commited_index
+
+            }
+            self.send(message["from"], message["fromip"], message["fromport"], request_append_entry)
+
     def handle_append_decision(self, message):
         vote = message['entry_appended']
         if vote and self.state =='leader' and self.in_flight:
@@ -340,6 +442,25 @@ class Node:
 
     def varify_hash(self, a, b):
         #implement varify hash
+        if len(a) > 0 and len(b) > 0:
+            e1 = a[-1]
+            e2 = b[0]
+            prevhash =  str(hashlib.sha256(str(e1).encode('utf-8')).hexdigest())
+            print(e2["prev_hash"])
+            print(prevhash)
+            if e2["prev_hash"] == prevhash:
+                e1 = e2
+                for e2 in b[1:]:
+                    prevhash =  str(hashlib.sha256(str(e1).encode('utf-8')).hexdigest())
+                    print(e2["prev_hash"])
+                    print(prevhash)
+                    if e2["prev_hash"] != prevhash:
+                        return False
+                    e1 = e2
+                print("verified hash----")
+                return True
+            return False
+
         return True
 
     def handle_commit(self):
@@ -347,30 +468,35 @@ class Node:
         print(self.in_flight)
         print(self.commited_index)
         print(self.log)
+        if self.commited_index >= len(self.log):
+            return 
         log_entry = self.log[self.commited_index]
         self.commited_index += 1
         if log_entry["type"] == "create":
             if self.id in log_entry["members"]:
-                self.dictionaries[log_entry["dict_id"]] = {
-                    "dict": {}, 
-                    "members": log_entry["members"],
-                    "public_key": log_entry["public_key"],
-                    "private_keys":log_entry["private_keys"]
-                    }
+                if log_entry["src"] in log_entry["members"]:
+                    self.dictionaries[log_entry["dict_id"]] = {
+                        "dict": {}, 
+                        "members": log_entry["members"],
+                        "public_key": log_entry["public_key"],
+                        "private_keys":log_entry["private_keys"]
+                        }
         elif log_entry["type"] == "put":
-            if self.id in self.dictionaries.get(log_entry["dict_id"]):
+            if self.dictionaries.get(log_entry["dict_id"]):
                 if self.id in self.dictionaries[log_entry["dict_id"]]["members"]:
-                    if log_entry["client_id"] in self.dictionaries[log_entry["dict_id"]]["members"]:
-                        self.dictionaries[log_entry["dict_id"]]["dict"][log_entry["key"]] = log_entry["value"]
-                    else:
-                        print("not a member")
+                    if log_entry["src"] in self.dictionaries[log_entry["dict_id"]]["members"]:
+                        if log_entry["client_id"] in self.dictionaries[log_entry["dict_id"]]["members"]:
+                            self.dictionaries[log_entry["dict_id"]]["dict"][log_entry["key"]] = log_entry["value"]
+                        else:
+                            print("not a member")
         elif log_entry["type"] == "get":
-            if self.id in self.dictionaries.get(log_entry["dict_id"]):
+            if self.dictionaries.get(log_entry["dict_id"]):
                 if self.id in self.dictionaries[log_entry["dict_id"]]["members"]:
-                    if log_entry["client_id"] in self.dictionaries[log_entry["dict_id"]]["members"]:
-                        print(self.dictionaries[log_entry["dict_id"]]["dict"][log_entry["key"]])
-                    else:
-                        print("not a member")
+                    if log_entry["src"] in self.dictionaries[log_entry["dict_id"]]["members"]:
+                        if log_entry["client_id"] in self.dictionaries[log_entry["dict_id"]]["members"]:
+                            print(self.dictionaries[log_entry["dict_id"]]["dict"][log_entry["key"]])
+                        else:
+                            print("not a member")
 
 
     def handle_vote_decision(self, message):
@@ -387,6 +513,74 @@ class Node:
                 self.votes_received = 0
                 self.in_election = False
                 return
+    
+    def handle_heartbeat_entry(self, sender, log_entries, message):
+
+        if sender == self.leader_id:
+            prev_index = message["prev_index"]
+            prev_term = message["prev_term"]
+            if prev_index > len(self.log) - 1:
+                return {
+                    'from': self.id,
+                    'fromip': self.ip,
+                    'fromport': self.port,
+                    'type': 'heartbeat_decsion',
+                    'entry_appended': False,
+                    'length_entries': len(log_entries)
+                }
+            prev_entry = {}
+            if prev_index >= 0:
+                prev_entry = self.log[prev_index]
+            if prev_index <= len(self.log) - 1 and (prev_index < 0 or prev_entry["term"] == prev_term):
+                #log_entry = log_entries[0]
+                what = self.varify_hash(self.log[:prev_index+1], log_entries)
+                if what==False:
+                    return {
+                    'from': self.id,
+                    'fromip': self.ip,
+                    'fromport': self.port,
+                    'type': 'heartbeat_decsion',
+                    'entry_appended': False,
+                    'length_entries': len(log_entries)
+                }
+                #print("varified hash")
+                self.log = self.log[:prev_index+1] + log_entries
+                self.election_timeout = self.get_random_timeout()
+                commits = message["commit_index"]
+                while(commits and self.commited_index < len(self.log)):
+                    print("YOYO")
+                    self.handle_commit()
+                    commits -=1
+                self.write_state()
+
+                return {
+                    'from': self.id,
+                    'fromip': self.ip,
+                    'fromport': self.port,
+                    'type': 'heartbeat_decsion',
+                    'entry_appended': True,
+                    'length_entries': len(log_entries)
+                    }
+            else:
+                return {
+                    'from': self.id,
+                    'fromip': self.ip,
+                    'fromport': self.port,
+                    'type': 'heartbeat_decsion',
+                    'entry_appended': False,
+                    'length_entries': len(log_entries)
+                }
+                
+        else:
+
+            return {
+                'from': self.id,
+                'fromip': self.ip,
+                'fromport': self.port,
+                'type': 'heartbeat_decsion',
+                'entry_appended': False
+                }
+
     def handle_append_entry(self, sender, log_entries, message):
 
         if sender == self.leader_id:
@@ -450,7 +644,8 @@ class Node:
                 'fromip': self.ip,
                 'fromport': self.port,
                 'type': 'append_decsion',
-                'entry_appended': False
+                'entry_appended': False,
+                'length_entries': len(log_entries) #seee
                 }
 
     def handle_request_vote(self, candidate_id, candidate_term, log_entry):
@@ -512,13 +707,21 @@ class Node:
         name = peer[0]
         ip = peer[1]
         port = peer[2]
+        prev_index = len(self.log)-1
+        prev_term = None
+        if prev_index >= 0:
+            prev_term = self.log[prev_index]["term"]
         heartbeat_message = {
             'from': self.id,
             'fromip': self.ip,
             'fromport': self.port,
             'type': 'heartbeat',
             'leader_id': self.id,
-            'term': self.current_term
+            'term': self.current_term,
+            'log_entry': [],
+            'prev_index': len(self.log)-1,
+            'prev_term': prev_term,
+            'commit_index': self.commited_index
         }
         self.send(name, ip, port, heartbeat_message)
 
@@ -530,12 +733,17 @@ class Node:
                     self.send_heartbeat(peer)
 
 
-    def handle_heartbeat(self, leader_id, leader_term):
+    def handle_heartbeat(self, leader_id, leader_term, message):
         if leader_term >= self.current_term:
+            sender = message["from"]
+            ip = message['fromip']
+            port = message['fromport']
             self.state = 'follower'
             self.voted_for = None
             self.leader_id = leader_id
             self.election_timeout = self.get_random_timeout()
+            response = self.handle_heartbeat_entry(sender, message['log_entry'], message)
+            self.send(sender, ip, port, response)
 
     def handle_timeout(self):
         if self.state == 'follower':
@@ -565,7 +773,7 @@ class Node:
                 #connection.sendall(json.dumps(response).encode())
 
             elif message['type'] == 'heartbeat':
-                self.handle_heartbeat(message['leader_id'], message['term'])
+                self.handle_heartbeat(message['leader_id'], message['term'], message)
             elif message['type'] == 'vote_decsion':
                 self.handle_vote_decision(message)
             elif message['type'] == 'append_entry':
@@ -574,6 +782,16 @@ class Node:
                 self.send(sender, ip, port, response)
             elif message['type'] == 'append_decsion':
                 self.handle_append_decision(message)
+
+            elif message['type'] == 'heartbeat_decsion':
+                self.handle_heartbeat_decision(message)
+
+            elif message['type'] == 'c':
+                self.create_dict(message["clients"], message["from"])
+            elif message['type'] == 'p':
+                self.put_dict(message["id"], message["key"], message["value"], message["from"])
+            elif message['type'] == 'g':
+                self.get_dict(message["id"], message["key"], message["from"])
             else:
             
                 # TODO: Implement handling other message types
@@ -618,19 +836,19 @@ class Node:
             elif cmd.split()[0] == "create":
                 cmdsp = cmd.split()
                 lst = cmdsp[1:]
-                self.create_dict(lst)
+                self.create_dict(lst, self.id)
             elif cmd.split()[0] == "put":
                 cmdsp = cmd.split()
                 id = cmdsp[1]
                 key = cmdsp[2]
                 value = cmdsp[3]
-                self.put_dict(id, key, value)
+                self.put_dict(id, key, value, self.id)
                 pass
             elif cmd.split()[0] == "get":
                 cmdsp = cmd.split()
                 id = cmdsp[1]
                 key = cmdsp[2]
-                self.get_dict(id, key)
+                self.get_dict(id, key, self.id)
                 pass
             elif cmd.split()[0] == "printDict":
                 cmdsp = cmd.split()
@@ -660,7 +878,7 @@ class Node:
                 print("dictionaries", self.dictionaries)
                 print("fail_links", self.fail_dests)
             elif cmd == "test1":
-                self.create_dict(["a", "b", "c", "d"])
+                self.create_dict(["a", "b", "c", "d"], self.id)
             else:
                 pass
 
